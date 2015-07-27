@@ -11,24 +11,37 @@ import UIKit
 class MasterViewController: UITableViewController {
 
     var detailViewController: DetailViewController? = nil
-    var objects = [AnyObject]()
+    var allWords = [String]()
+    var objects = [String]()
+    var score = 0
+    
+   
+    @IBOutlet weak var scoreLabel: UILabel!
+    
 
 
     override func viewDidLoad() {
         super.viewDidLoad()
-        // Do any additional setup after loading the view, typically from a nib.
-        self.navigationItem.leftBarButtonItem = self.editButtonItem()
+        scoreLabel.text = "0"
+        navigationItem.leftBarButtonItem = UIBarButtonItem(barButtonSystemItem: UIBarButtonSystemItem.Refresh, target: self, action: "startGame")
+        navigationItem.rightBarButtonItem = UIBarButtonItem(barButtonSystemItem: .Add, target: self, action: "promptForAnswer")
 
-        let addButton = UIBarButtonItem(barButtonSystemItem: .Add, target: self, action: "insertNewObject:")
-        self.navigationItem.rightBarButtonItem = addButton
-        if let split = self.splitViewController {
-            let controllers = split.viewControllers
-            self.detailViewController = (controllers[controllers.count-1] as! UINavigationController).topViewController as? DetailViewController
-        }
+     
+    
+            do {
+                let startWordsPath = NSBundle.mainBundle().pathForResource("start", ofType: "txt")
+                let startWords = try NSString(contentsOfFile: startWordsPath!, usedEncoding: nil)
+                allWords = startWords.componentsSeparatedByString("\n") as [String]
+                } catch let error {
+                    allWords = ["silkworm"]
+                    print(error)
+                }
+        startGame()
     }
 
+        
     override func viewWillAppear(animated: Bool) {
-        self.clearsSelectionOnViewWillAppear = self.splitViewController!.collapsed
+        
         super.viewWillAppear(animated)
     }
 
@@ -37,26 +50,11 @@ class MasterViewController: UITableViewController {
         // Dispose of any resources that can be recreated.
     }
 
-    func insertNewObject(sender: AnyObject) {
-        objects.insert(NSDate(), atIndex: 0)
-        let indexPath = NSIndexPath(forRow: 0, inSection: 0)
-        self.tableView.insertRowsAtIndexPaths([indexPath], withRowAnimation: .Automatic)
-    }
+
 
     // MARK: - Segues
 
-    override func prepareForSegue(segue: UIStoryboardSegue, sender: AnyObject?) {
-        if segue.identifier == "showDetail" {
-            if let indexPath = self.tableView.indexPathForSelectedRow {
-                let object = objects[indexPath.row] as! NSDate
-                let controller = (segue.destinationViewController as! UINavigationController).topViewController as! DetailViewController
-                controller.detailItem = object
-                controller.navigationItem.leftBarButtonItem = self.splitViewController?.displayModeButtonItem()
-                controller.navigationItem.leftItemsSupplementBackButton = true
-            }
-        }
-    }
-
+    
     // MARK: - Table View
 
     override func numberOfSectionsInTableView(tableView: UITableView) -> Int {
@@ -70,25 +68,107 @@ class MasterViewController: UITableViewController {
     override func tableView(tableView: UITableView, cellForRowAtIndexPath indexPath: NSIndexPath) -> UITableViewCell {
         let cell = tableView.dequeueReusableCellWithIdentifier("Cell", forIndexPath: indexPath)
 
-        let object = objects[indexPath.row] as! NSDate
-        cell.textLabel!.text = object.description
+        let object = objects[indexPath.row]
+        cell.textLabel!.text = object
         return cell
     }
 
-    override func tableView(tableView: UITableView, canEditRowAtIndexPath indexPath: NSIndexPath) -> Bool {
-        // Return false if you do not want the specified item to be editable.
+    //MARK: - Helper Methods
+    func startGame() {
+        allWords.shuffle()
+        title = allWords[0]
+        objects.removeAll(keepCapacity: true)
+        tableView.reloadData()
+        
+    }
+    func promptForAnswer() {
+        let ac = UIAlertController(title: "Enter Answer", message: nil, preferredStyle: .Alert)
+       
+        ac.addTextFieldWithConfigurationHandler(nil)
+        
+        let submitAction = UIAlertAction(title: "Submit", style: .Default) { [unowned self, ac] _ in
+            let answer = ac.textFields![0] as UITextField
+            self.submitAnswer(answer.text!)
+        }
+        ac.addAction(submitAction)
+        presentViewController(ac, animated: true, completion: nil)
+        
+    }
+    
+    
+    func submitAnswer(answer: String) {
+        let lowerAnswer = answer.lowercaseString
+        if wordIsPossible(lowerAnswer) {
+            if wordIsOriginal(lowerAnswer) {
+                if wordIsReal(lowerAnswer) {
+                    if wordNotBlank(lowerAnswer){
+                    objects.insert(answer, atIndex: 0)
+                    let indexPath = NSIndexPath(forRow: 0, inSection: 0)
+                    tableView.insertRowsAtIndexPaths([indexPath], withRowAnimation: .Automatic)
+                        score += 1
+                        scoreLabel.text = "\(score)"
+                    } else {
+                        showErrorMessage("You must enter a word", title: "Guess was empty")
+                    }
+                } else {
+                    showErrorMessage("You can't just make words up, you know!", title: "Word not recognized")
+            }
+                
+        } else {
+            showErrorMessage("That word has already been used!", title: "Try again!")
+        }
+    } else {
+        showErrorMessage("You cannot spell that word from '\(title!.lowercaseString)'!", title: "Word not possible")
+    }
+    }
+    
+    // MARK: - Word Checking
+    func wordIsPossible(word:String) -> Bool {
+        var tempWord = title?.lowercaseString
+        for letter in word.characters{
+            if let pos = tempWord?.rangeOfString(String(letter)) {
+                if pos.isEmpty {
+                    return false
+                } else {
+                    tempWord?.removeAtIndex(pos.startIndex)
+                }
+            } else {
+                return false
+            }
+        }
+
         return true
     }
-
-    override func tableView(tableView: UITableView, commitEditingStyle editingStyle: UITableViewCellEditingStyle, forRowAtIndexPath indexPath: NSIndexPath) {
-        if editingStyle == .Delete {
-            objects.removeAtIndex(indexPath.row)
-            tableView.deleteRowsAtIndexPaths([indexPath], withRowAnimation: .Fade)
-        } else if editingStyle == .Insert {
-            // Create a new instance of the appropriate class, insert it into the array, and add a new row to the table view.
-        }
+    
+    
+    func wordIsOriginal(word: String) -> Bool {
+        let myWord:Bool = word != title
+        return !(objects.contains(word)) && myWord
+       
     }
-
-
+    
+    
+    func wordIsReal(word: NSString) -> Bool {
+        let checker = UITextChecker()
+        let range = NSMakeRange(0, word.length)
+        let misspelledRange = checker.rangeOfMisspelledWordInString(word as String, range: range, startingAt: 0, wrap: false, language: "en")
+        
+                return misspelledRange.location == NSNotFound
+    }
+    
+    func wordNotBlank(word: String) -> Bool {
+        return word != ""
+    }
+    
+    
+    
+    func showErrorMessage(errorMessage: String, title: String){
+        
+    let ac = UIAlertController(title: title, message: errorMessage, preferredStyle: .Alert)
+    ac.addAction(UIAlertAction(title: "OK", style: .Default, handler: nil))
+    presentViewController(ac, animated: true, completion: nil)
+    }
+    
+    
 }
 
