@@ -2,7 +2,7 @@
 ## Overview##
 an anagram game while learning about closures and booleans.
 ## Leaning Goals###
-NSString, closures, method return values, booleans, NSRange.
+
 <ul>
 <li>NSString</li>
 <li>Closures</li>
